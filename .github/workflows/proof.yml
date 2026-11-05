@@ -17,7 +17,7 @@ jobs:
       workers: ${{ steps.route.outputs.workers }}
       reason: ${{ steps.route.outputs.reason }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: route
         uses: ./
         with:

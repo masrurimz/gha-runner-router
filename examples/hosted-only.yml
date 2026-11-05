@@ -35,5 +35,5 @@ jobs:
     needs: route
     runs-on: ${{ fromJSON(needs.route.outputs.runs-on) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: npx vitest run --maxWorkers=${{ needs.route.outputs.workers }}

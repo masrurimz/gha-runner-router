@@ -133,7 +133,7 @@ jobs:
     env:
       TEST_WORKERS: ${{ needs.route.outputs.workers }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: echo "${{ needs.route.outputs.reason }}"
       - run: npx vitest run --maxWorkers=$TEST_WORKERS
 ```

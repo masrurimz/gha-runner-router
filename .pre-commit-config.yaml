@@ -1,0 +1,28 @@
+repos:
+  - repo: local
+    hooks:
+      - id: oxlint
+        name: oxlint
+        entry: bun run lint
+        language: system
+        pass_filenames: false
+      - id: oxfmt
+        name: oxfmt
+        entry: bun run fmt
+        language: system
+        pass_filenames: false
+      - id: typecheck
+        name: effect-tsrs strict diagnostics
+        entry: bun run typecheck
+        language: system
+        pass_filenames: false
+      - id: typecheck-fast
+        name: bun check
+        entry: bun run typecheck:fast
+        language: system
+        pass_filenames: false
+      - id: test
+        name: vitest
+        entry: bun run test
+        language: system
+        pass_filenames: false

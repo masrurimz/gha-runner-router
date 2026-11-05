@@ -1,0 +1,36 @@
+name: Runner Router
+description: Pick a job's runs-on per run. Use a shared self-hosted box while it has a free slot, then free-tier metered pools in order, never past a quota reserve.
+author: masrurimz
+branding:
+  icon: shuffle
+  color: blue
+inputs:
+  pools:
+    description: >-
+      Ordered YAML list of pools. Each pool has name, runs-on (string or list), kind (local or metered) and workers. A local pool adds slots and min-available-mb (and optional host). A metered pool adds free-minutes per calendar month (UTC) and optional minute-multiplier.
+    required: true
+  quota-reserve:
+    description: A metered pool counts as full at quota-reserve times its free-minutes.
+    required: false
+    default: "0.9"
+  fallback:
+    description: >-
+      Pool name used when every pool is full or busy. Defaults to the first local pool, else the first pool.
+    required: false
+    default: ""
+  github-token:
+    description: Token used to read workflow runs and jobs of this repository. Needs actions read.
+    required: false
+    default: ${{ github.token }}
+outputs:
+  runs-on:
+    description: The chosen runs-on labels as a JSON array, for fromJSON.
+  pool:
+    description: Name of the chosen pool.
+  workers:
+    description: Test-worker budget of the chosen pool.
+  reason:
+    description: One human-readable line explaining the decision.
+runs:
+  using: node24
+  main: dist/index.js

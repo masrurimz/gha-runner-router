@@ -1,0 +1,39 @@
+name: pr
+
+on: pull_request
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    outputs:
+      runs-on: ${{ steps.route.outputs.runs-on }}
+      workers: ${{ steps.route.outputs.workers }}
+    steps:
+      - id: route
+        uses: masrurimz/gha-runner-router@v1
+        with:
+          quota-reserve: "0.8"
+          pools: |
+            - name: hosted
+              kind: metered
+              runs-on: ubuntu-latest
+              workers: 2
+              free-minutes: 2000
+            - name: hosted-4-core
+              kind: metered
+              runs-on: [ubuntu-latest-4-cores]
+              workers: 4
+              free-minutes: 2000
+              minute-multiplier: 2
+          fallback: hosted
+
+  check:
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.runs-on) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: npx vitest run --maxWorkers=${{ needs.route.outputs.workers }}

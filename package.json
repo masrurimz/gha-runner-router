@@ -1,0 +1,41 @@
+{
+  "name": "gha-runner-router",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action that picks a job's runs-on per run: a shared self-hosted box while it has a free slot, then free-tier metered pools in order, never past a quota reserve.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/masrurimz/gha-runner-router.git"
+  },
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint",
+    "fmt": "oxfmt --check .",
+    "fmt:write": "oxfmt --write .",
+    "typecheck": "effect-tsrs diagnostics --project tsconfig.json --strict",
+    "typecheck:fast": "tsrs --noEmit --project tsconfig.json",
+    "test": "vitest run --maxWorkers=2",
+    "build": "bun scripts/build.ts",
+    "dist:check": "bun scripts/build.ts --check",
+    "check": "bun run lint && bun run fmt && bun run typecheck && bun run typecheck:fast && bun run test && bun run dist:check"
+  },
+  "dependencies": {
+    "@actions/artifact": "6.2.1",
+    "@effect/platform-node": "4.0.6",
+    "effect": "4.0.6",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.6",
+    "@oxlint/plugins": "1.88.0",
+    "@types/bun": "1.4.4",
+    "@yielded/effect-tsrs": "0.2.0",
+    "oxfmt": "0.74.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
+    "ultracite": "8.0.1",
+    "vitest": "5.0.5"
+  }
+}

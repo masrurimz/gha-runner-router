@@ -1,0 +1,53 @@
+name: pr
+
+on: pull_request
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  route:
+    runs-on: [self-hosted, x1-router]
+    outputs:
+      runs-on: ${{ steps.route.outputs.runs-on }}
+      pool: ${{ steps.route.outputs.pool }}
+      workers: ${{ steps.route.outputs.workers }}
+      reason: ${{ steps.route.outputs.reason }}
+    steps:
+      - id: route
+        uses: masrurimz/gha-runner-router@v1
+        with:
+          fallback: x1
+          pools: |
+            - name: x1
+              kind: local
+              runs-on: [self-hosted, x1-dev-zahid]
+              workers: 8
+              slots: 4
+              min-available-mb: 15000
+            - name: avrea
+              kind: metered
+              runs-on: [REPLACE_WITH_AVREA_LABEL_FROM_AVREA_DOCS]
+              workers: 4
+              free-minutes: 3000
+            - name: blacksmith
+              kind: metered
+              runs-on: [REPLACE_WITH_BLACKSMITH_LABEL_FROM_BLACKSMITH_DOCS]
+              workers: 4
+              free-minutes: 3000
+            - name: github-hosted
+              kind: metered
+              runs-on: ubuntu-latest
+              workers: 2
+              free-minutes: 2000
+
+  check:
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.runs-on) }}
+    env:
+      TEST_WORKERS: ${{ needs.route.outputs.workers }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "${{ needs.route.outputs.reason }}"
+      - run: npx vitest run --maxWorkers=$TEST_WORKERS

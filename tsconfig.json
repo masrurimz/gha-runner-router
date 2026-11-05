@@ -1,0 +1,76 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["bun"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "ignoreEffectWarningsInTscExitCode": false,
+        "namespaceImportPackages": ["effect", "@effect/platform-node"],
+        "allowedUnstableApis": [
+          "effect/FileSystem",
+          "effect/http",
+          "@effect/platform-node/NodeRuntime",
+          "@effect/platform-node/NodeFileSystem",
+          "@effect/vitest"
+        ],
+        "diagnosticSeverity": {
+          "anyUnknownInErrorContext": "error",
+          "asyncFunction": "error",
+          "cryptoRandomUUID": "error",
+          "cryptoRandomUUIDInEffect": "error",
+          "floatingEffect": "error",
+          "floatingEffectInVitest": "error",
+          "globalConsole": "error",
+          "globalConsoleInEffect": "error",
+          "globalDate": "error",
+          "globalDateInEffect": "error",
+          "globalErrorInEffectCatch": "error",
+          "globalErrorInEffectFailure": "error",
+          "globalFetch": "error",
+          "globalFetchInEffect": "error",
+          "globalRandom": "error",
+          "globalRandomInEffect": "error",
+          "globalTimers": "error",
+          "globalTimersInEffect": "error",
+          "instanceOfSchema": "error",
+          "lazyEffect": "off",
+          "leakingRequirements": "error",
+          "missingEffectContext": "error",
+          "missingEffectError": "error",
+          "missingLayerContext": "error",
+          "newPromise": "error",
+          "nodeBuiltinImport": "error",
+          "returnEffectInGen": "error",
+          "runEffectInsideEffect": "error",
+          "schemaSyncInEffect": "error",
+          "strictBooleanExpressions": "off",
+          "strictEffectProvide": "off",
+          "tryCatchInEffectGen": "error",
+          "unknownInEffectCatch": "error",
+          "unsafeEffectTypeAssertion": "error"
+        }
+      }
+    ]
+  },
+  "include": [
+    "src",
+    "test",
+    "scripts",
+    "tools",
+    "oxlint.config.ts",
+    "oxfmt.config.ts"
+  ]
+}

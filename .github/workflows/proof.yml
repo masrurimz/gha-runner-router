@@ -1,0 +1,51 @@
+name: proof
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    outputs:
+      runs-on: ${{ steps.route.outputs.runs-on }}
+      pool: ${{ steps.route.outputs.pool }}
+      workers: ${{ steps.route.outputs.workers }}
+      reason: ${{ steps.route.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: route
+        uses: ./
+        with:
+          pools: |
+            - name: unreachable-box
+              runs-on: [self-hosted, unreachable-box]
+              kind: local
+              workers: 8
+              slots: 4
+              min-available-mb: 15000
+              host: this-host-does-not-exist
+            - name: github-hosted
+              runs-on: ubuntu-latest
+              kind: metered
+              workers: 2
+              free-minutes: 2000
+          fallback: github-hosted
+
+  work:
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.runs-on) }}
+    steps:
+      - name: Echo the routing decision
+        env:
+          POOL: ${{ needs.route.outputs.pool }}
+          WORKERS: ${{ needs.route.outputs.workers }}
+          RUNS_ON: ${{ needs.route.outputs.runs-on }}
+          REASON: ${{ needs.route.outputs.reason }}
+        run: |
+          echo "decision: pool=$POOL runs-on=$RUNS_ON workers=$WORKERS"
+          echo "reason: $REASON"

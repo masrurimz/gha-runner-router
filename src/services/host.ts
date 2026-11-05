@@ -13,12 +13,35 @@ const KB_PER_MB = 1024;
 
 const PROBE_CONCURRENCY = 16;
 
+const MAX_ANCESTORS = 64;
+
 const PID = /^\d+$/u;
 
 const MEM_AVAILABLE = /^MemAvailable:\s+(?<kb>\d+) kB$/mu;
 
-export const countWorkers = (comms: readonly string[]): number =>
-  comms.filter((comm) => comm.trim() === WORKER_COMM).length;
+const PARENT_PID = /^\d+ \(.*\) \S (?<ppid>\d+) /su;
+
+export interface Proc {
+  readonly pid: number;
+  readonly comm: string;
+  readonly cmdline: string;
+}
+
+export const parentPid = (stat: string): number | undefined => {
+  const ppid = PARENT_PID.exec(stat)?.groups?.ppid;
+
+  return ppid === undefined ? undefined : Number(ppid);
+};
+
+export const workerCommands = (
+  procs: readonly Proc[],
+  ancestors: ReadonlySet<number>
+): readonly string[] =>
+  procs.flatMap((proc) =>
+    proc.comm.trim() === WORKER_COMM && !ancestors.has(proc.pid)
+      ? [proc.cmdline]
+      : []
+  );
 
 export const memAvailableMb = (meminfo: string): number | undefined => {
   const kb = MEM_AVAILABLE.exec(meminfo)?.groups?.kb;
@@ -27,10 +50,10 @@ export const memAvailableMb = (meminfo: string): number | undefined => {
 };
 
 export const notOnHost = (name: string): HostFacts => ({
-  busyWorkers: 0,
   hostname: name,
   memAvailableMb: 0,
   selfHosted: false,
+  workerCommands: [],
 });
 
 export class Host extends Context.Service<Host>()(
@@ -45,6 +68,45 @@ export class Host extends Context.Service<Host>()(
 
       const name = hostname();
 
+      const readProc = (pid: string) =>
+        Effect.gen(function* readOne() {
+          const comm = yield* fs
+            .readFileString(`${PROC}/${pid}/comm`)
+            .pipe(Effect.orElseSucceed(() => ""));
+
+          if (comm.trim() !== WORKER_COMM) {
+            return { cmdline: "", comm, pid: Number(pid) } satisfies Proc;
+          }
+
+          const raw = yield* fs
+            .readFileString(`${PROC}/${pid}/cmdline`)
+            .pipe(Effect.orElseSucceed(() => ""));
+
+          return {
+            cmdline: raw.replaceAll("\0", " ").trim(),
+            comm,
+            pid: Number(pid),
+          } satisfies Proc;
+        });
+
+      const ancestors = Effect.gen(function* walk() {
+        const seen = new Set<number>();
+        const { pid: self } = process;
+        let pid = self;
+
+        while (pid > 1 && seen.size < MAX_ANCESTORS) {
+          seen.add(pid);
+
+          const stat = yield* fs
+            .readFileString(`${PROC}/${pid}/stat`)
+            .pipe(Effect.orElseSucceed(() => ""));
+
+          pid = parentPid(stat) ?? 0;
+        }
+
+        return seen;
+      });
+
       const facts = Effect.gen(function* facts() {
         if (environment !== "self-hosted") {
           return notOnHost(name);
@@ -52,12 +114,9 @@ export class Host extends Context.Service<Host>()(
 
         const entries = yield* fs.readDirectory(PROC);
 
-        const comms = yield* Effect.forEach(
+        const procs = yield* Effect.forEach(
           entries.filter((entry) => PID.test(entry)),
-          (pid) =>
-            fs
-              .readFileString(`${PROC}/${pid}/comm`)
-              .pipe(Effect.orElseSucceed(() => "")),
+          readProc,
           { concurrency: PROBE_CONCURRENCY }
         );
 
@@ -69,10 +128,10 @@ export class Host extends Context.Service<Host>()(
         }
 
         return {
-          busyWorkers: Math.max(0, countWorkers(comms) - 1),
           hostname: name,
           memAvailableMb: available,
           selfHosted: true,
+          workerCommands: workerCommands(procs, yield* ancestors),
         };
       }).pipe(Effect.orElseSucceed(() => notOnHost(name)));
 

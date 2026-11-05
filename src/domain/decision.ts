@@ -7,7 +7,7 @@ import type { Routing } from "./routing.ts";
 export interface HostFacts {
   readonly selfHosted: boolean;
   readonly hostname: string;
-  readonly busyWorkers: number;
+  readonly workerCommands: readonly string[];
   readonly memAvailableMb: number;
 }
 
@@ -33,6 +33,17 @@ const onPoolHost = (pool: LocalPool, host: HostFacts): boolean =>
     onSome: (name) => name.toLowerCase() === host.hostname.toLowerCase(),
   });
 
+export const busyWorkers = (pool: LocalPool, host: HostFacts): number =>
+  Option.match(pool.workerMatch, {
+    onNone: () => host.workerCommands.length,
+    onSome: (source) => {
+      const pattern = new RegExp(source, "u");
+
+      return host.workerCommands.filter((command) => pattern.test(command))
+        .length;
+    },
+  });
+
 export const judgeLocal = (pool: LocalPool, host: HostFacts): Verdict => {
   if (!onPoolHost(pool, host)) {
     return {
@@ -41,10 +52,12 @@ export const judgeLocal = (pool: LocalPool, host: HostFacts): Verdict => {
     };
   }
 
-  if (host.busyWorkers >= pool.slots) {
+  const busy = busyWorkers(pool, host);
+
+  if (busy >= pool.slots) {
     return {
       available: false,
-      note: `${pool.name} busy ${host.busyWorkers}/${pool.slots} slots`,
+      note: `${pool.name} busy ${busy}/${pool.slots} slots`,
     };
   }
 
@@ -57,7 +70,7 @@ export const judgeLocal = (pool: LocalPool, host: HostFacts): Verdict => {
 
   return {
     available: true,
-    note: `${pool.name} has a free slot (${host.busyWorkers}/${pool.slots} busy, ${host.memAvailableMb} MB available)`,
+    note: `${pool.name} has a free slot (${busy}/${pool.slots} busy, ${host.memAvailableMb} MB available)`,
   };
 };
 

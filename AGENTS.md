@@ -35,7 +35,7 @@ Known blind spots, all documented in the README: usage from other repositories i
 
 ## Local pool detection
 
-`Host` reports `selfHosted` only when `RUNNER_ENVIRONMENT` is `self-hosted` and `/proc` is readable. Busy slots are the `Runner.Worker` processes found by `/proc/<pid>/comm`, minus one for the router job's own worker. An optional `host` on a local pool pins it to a machine hostname, so two local pools on different machines do not both claim a router job that landed on one of them. Run the router job on a dedicated runner label on the same host, or it queues when every slot is busy.
+`Host` reports `selfHosted` only when `RUNNER_ENVIRONMENT` is `self-hosted` and `/proc` is readable. It lists the command line of every process whose `/proc/<pid>/comm` is `Runner.Worker`, except the router job's own worker, found by walking the parent chain from the action process (`/proc/<pid>/stat`). `judgeLocal` counts those command lines, all of them or only those matching the pool's optional `worker-match` regex, against `slots`. An optional `host` on a local pool pins it to a machine hostname, so two local pools on different machines do not both claim a router job that landed on one of them. Run the router job on a dedicated runner label on the same host, or it queues when every slot is busy.
 
 ## Checks
 

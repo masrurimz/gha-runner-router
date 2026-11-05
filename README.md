@@ -32,7 +32,7 @@ The router makes that choice per run, from live facts. It reads the box's busy r
 
 Pools are tried in the order you list them. The first available pool wins.
 
-- A `local` pool is available when all three hold. The router job itself runs on that host. The number of busy `Runner.Worker` processes found in `/proc` (not counting the router job's own) is below `slots`. `MemAvailable` is at least `min-available-mb`.
+- A `local` pool is available when all three hold. The router job itself runs on that host. The number of busy `Runner.Worker` processes found in `/proc` is below `slots`. The worker that runs the router job is never counted, and with `worker-match` only workers whose command line matches count. `MemAvailable` is at least `min-available-mb`.
 - A `metered` pool is available while `month-to-date minutes × minute-multiplier < quota-reserve × free-minutes`. At exactly the reserve the pool counts as full.
 - When no pool is available, the `fallback` pool wins and the job queues there. The fallback is normally the local pool.
 
@@ -62,6 +62,7 @@ Pool fields:
 | `slots` | `local` | Runner processes on this host. Positive integer. |
 | `min-available-mb` | `local` | Smallest `MemAvailable` in MB that still counts as free. |
 | `host` | `local`, optional | Machine hostname. The pool only matches a router job running on that machine. Use it when two local pools are on different machines. |
+| `worker-match` | `local`, optional | Regular expression (JavaScript, `u` flag) tested against the command line of every `Runner.Worker`. Only matching workers count toward `slots`. Use it when other runners share the box, for example `/actions-runners/alkhidmah-tech(-[1-3])?/bin/`. Without it every worker on the box counts. An invalid expression fails the step with `RUNNER_ROUTER_INPUT_INVALID`. |
 | `free-minutes` | `metered` | Free minutes per calendar month (UTC). Positive integer. |
 | `minute-multiplier` | `metered`, optional | Minutes burned per minute of wall time, default `1`. Use `2` for a 4-vCPU size that burns twice. |
 
@@ -142,7 +143,7 @@ The same workflow is in [`examples/x1-vendors-hosted.yml`](examples/x1-vendors-h
 
 Things this example relies on:
 
-- **A router runner on the box.** The `route` job runs on a runner on the same machine as the local pool, because that is how the router can read the box's runner processes. Give it its own label (`x1-router` here) and run it as an extra runner process that is not counted in `slots`. If the router job shared the pool's labels it would queue behind the very jobs it is trying to avoid. The router counts its own worker as busy and subtracts it.
+- **A router runner on the box.** The `route` job runs on a runner on the same machine as the local pool, because that is how the router can read the box's runner processes. Give it its own label (`x1-router` here) and run it as an extra runner process that is not counted in `slots`. If the router job shared the pool's labels it would queue behind the very jobs it is trying to avoid. The router never counts the worker that runs its own job, whatever its directory.
 - **Jobs on vendor runners need the vendor's app installed** on the repository or org. Nothing here sets that up.
 - **`actions: read`** on the workflow or the route job. Without it the router cannot read usage, and metered pools are skipped with a warning.
 

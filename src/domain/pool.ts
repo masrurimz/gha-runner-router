@@ -8,6 +8,7 @@ export interface LocalPool {
   readonly slots: number;
   readonly minAvailableMb: number;
   readonly host: Option.Option<string>;
+  readonly workerMatch: Option.Option<string>;
 }
 
 export interface MeteredPool {

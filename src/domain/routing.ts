@@ -17,6 +17,7 @@ const LocalPoolInputSchema = Schema.Struct({
   name: Schema.NonEmptyString,
   "runs-on": Labels,
   slots: Count,
+  "worker-match": Schema.optionalKey(Schema.NonEmptyString),
   workers: Count,
 });
 
@@ -55,6 +56,7 @@ const toPool = (input: PoolInput): Pool =>
         name: input.name,
         runsOn: labelsOf(input["runs-on"]),
         slots: input.slots,
+        workerMatch: Option.fromNullishOr(input["worker-match"]),
         workers: input.workers,
       }
     : {
@@ -76,6 +78,14 @@ const BASIS_POINTS = 10_000;
 
 const invalid = (input: string, reason: string) =>
   new InputInvalid({ input, reason });
+
+const isRegExp = (source: string): boolean => {
+  try {
+    return Boolean(new RegExp(source, "u"));
+  } catch {
+    return false;
+  }
+};
 
 const parseReserve = (text: string): Effect.Effect<number, InputInvalid> => {
   const value = Number(text.trim());
@@ -142,6 +152,21 @@ export const buildRouting = (
     }
 
     const reserveBp = yield* parseReserve(reserveText);
+
+    const badMatch = pools.find(
+      (pool) =>
+        pool.kind === "local" &&
+        Option.isSome(pool.workerMatch) &&
+        !isRegExp(pool.workerMatch.value)
+    );
+
+    if (badMatch !== undefined) {
+      return yield* invalid(
+        "pools",
+        `pool "${badMatch.name}" has a worker-match that is not a regular expression`
+      );
+    }
+
     const fallback = yield* chooseFallback(pools, fallbackName);
 
     return { fallback, pools, reserveBp };

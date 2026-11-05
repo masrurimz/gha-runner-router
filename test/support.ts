@@ -16,6 +16,7 @@ export const localPool = (overrides: Partial<LocalPool> = {}): LocalPool => ({
   name: "x1",
   runsOn: ["self-hosted", "x1"],
   slots: 4,
+  workerMatch: Option.none(),
   workers: 8,
   ...overrides,
 });
@@ -41,13 +42,23 @@ export const routingOf = (
   reserveBp: RESERVE_BP,
 });
 
-export const hostFacts = (overrides: Partial<HostFacts> = {}): HostFacts => ({
-  busyWorkers: 0,
-  hostname: "x1-dev",
-  memAvailableMb: 32_000,
-  selfHosted: true,
-  ...overrides,
-});
+export const WORKER_COMMAND = "/runner/bin/Runner.Worker spawnclient 1 2";
+
+interface HostOverrides extends Partial<HostFacts> {
+  readonly busyWorkers?: number;
+}
+
+export const hostFacts = (overrides: HostOverrides = {}): HostFacts => {
+  const { busyWorkers = 0, ...facts } = overrides;
+
+  return {
+    hostname: "x1-dev",
+    memAvailableMb: 32_000,
+    selfHosted: true,
+    workerCommands: Array.from({ length: busyWorkers }, () => WORKER_COMMAND),
+    ...facts,
+  };
+};
 
 const TWO_DIGITS = 2;
 

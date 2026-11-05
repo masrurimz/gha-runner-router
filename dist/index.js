@@ -92474,18 +92474,24 @@ var PROC = "/proc";
 var WORKER_COMM = "Runner.Worker";
 var KB_PER_MB = 1024;
 var PROBE_CONCURRENCY = 16;
+var MAX_ANCESTORS = 64;
 var PID = /^\d+$/u;
 var MEM_AVAILABLE = /^MemAvailable:\s+(?<kb>\d+) kB$/mu;
-var countWorkers = (comms) => comms.filter((comm) => comm.trim() === WORKER_COMM).length;
+var PARENT_PID = /^\d+ \(.*\) \S (?<ppid>\d+) /su;
+var parentPid = (stat) => {
+  const ppid = PARENT_PID.exec(stat)?.groups?.ppid;
+  return ppid === undefined ? undefined : Number(ppid);
+};
+var workerCommands = (procs, ancestors) => procs.flatMap((proc) => proc.comm.trim() === WORKER_COMM && !ancestors.has(proc.pid) ? [proc.cmdline] : []);
 var memAvailableMb = (meminfo) => {
   const kb = MEM_AVAILABLE.exec(meminfo)?.groups?.kb;
   return kb === undefined ? undefined : Math.floor(Number(kb) / KB_PER_MB);
 };
 var notOnHost = (name) => ({
-  busyWorkers: 0,
   hostname: name,
   memAvailableMb: 0,
-  selfHosted: false
+  selfHosted: false,
+  workerCommands: []
 });
 
 class Host extends Service()("gha-runner-router/services/Host", {
@@ -92493,22 +92499,45 @@ class Host extends Service()("gha-runner-router/services/Host", {
     const fs = yield* FileSystem;
     const environment = yield* String5("RUNNER_ENVIRONMENT").pipe(withDefault3("github-hosted"));
     const name = hostname();
+    const readProc = (pid) => gen2(function* readOne() {
+      const comm = yield* fs.readFileString(`${PROC}/${pid}/comm`).pipe(orElseSucceed2(() => ""));
+      if (comm.trim() !== WORKER_COMM) {
+        return { cmdline: "", comm, pid: Number(pid) };
+      }
+      const raw = yield* fs.readFileString(`${PROC}/${pid}/cmdline`).pipe(orElseSucceed2(() => ""));
+      return {
+        cmdline: raw.replaceAll("\x00", " ").trim(),
+        comm,
+        pid: Number(pid)
+      };
+    });
+    const ancestors = gen2(function* walk() {
+      const seen = new Set;
+      const { pid: self2 } = process;
+      let pid = self2;
+      while (pid > 1 && seen.size < MAX_ANCESTORS) {
+        seen.add(pid);
+        const stat = yield* fs.readFileString(`${PROC}/${pid}/stat`).pipe(orElseSucceed2(() => ""));
+        pid = parentPid(stat) ?? 0;
+      }
+      return seen;
+    });
     const facts = gen2(function* facts() {
       if (environment !== "self-hosted") {
         return notOnHost(name);
       }
       const entries = yield* fs.readDirectory(PROC);
-      const comms = yield* forEach2(entries.filter((entry) => PID.test(entry)), (pid) => fs.readFileString(`${PROC}/${pid}/comm`).pipe(orElseSucceed2(() => "")), { concurrency: PROBE_CONCURRENCY });
+      const procs = yield* forEach2(entries.filter((entry) => PID.test(entry)), readProc, { concurrency: PROBE_CONCURRENCY });
       const meminfo = yield* fs.readFileString(`${PROC}/meminfo`);
       const available = memAvailableMb(meminfo);
       if (available === undefined) {
         return notOnHost(name);
       }
       return {
-        busyWorkers: Math.max(0, countWorkers(comms) - 1),
         hostname: name,
         memAvailableMb: available,
-        selfHosted: true
+        selfHosted: true,
+        workerCommands: workerCommands(procs, yield* ancestors)
       };
     }).pipe(orElseSucceed2(() => notOnHost(name)));
     return { facts };
@@ -92577,6 +92606,7 @@ var LocalPoolInputSchema = Struct({
   name: NonEmptyString,
   "runs-on": Labels,
   slots: Count,
+  "worker-match": optionalKey2(NonEmptyString),
   workers: Count
 });
 var MeteredPoolInputSchema = Struct({
@@ -92599,6 +92629,7 @@ var toPool = (input) => input.kind === "local" ? {
   name: input.name,
   runsOn: labelsOf(input["runs-on"]),
   slots: input.slots,
+  workerMatch: fromNullishOr(input["worker-match"]),
   workers: input.workers
 } : {
   freeMinutes: input["free-minutes"],
@@ -92610,6 +92641,13 @@ var toPool = (input) => input.kind === "local" ? {
 };
 var BASIS_POINTS = 1e4;
 var invalid4 = (input, reason) => new InputInvalid({ input, reason });
+var isRegExp = (source) => {
+  try {
+    return Boolean(new RegExp(source, "u"));
+  } catch {
+    return false;
+  }
+};
 var parseReserve = (text) => {
   const value = Number(text.trim());
   return Number.isFinite(value) && value > 0 && value <= 1 ? succeed6(Math.round(value * BASIS_POINTS)) : fail6(invalid4("quota-reserve", `"${text}" is not a number in (0, 1]`));
@@ -92634,6 +92672,10 @@ var buildRouting = (inputs, reserveText, fallbackName) => gen2(function* build()
     return yield* invalid4("pools", `duplicate pool name "${duplicate.value}"`);
   }
   const reserveBp = yield* parseReserve(reserveText);
+  const badMatch = pools.find((pool) => pool.kind === "local" && isSome2(pool.workerMatch) && !isRegExp(pool.workerMatch.value));
+  if (badMatch !== undefined) {
+    return yield* invalid4("pools", `pool "${badMatch.name}" has a worker-match that is not a regular expression`);
+  }
   const fallback = yield* chooseFallback(pools, fallbackName);
   return { fallback, pools, reserveBp };
 });
@@ -132480,6 +132522,13 @@ var onPoolHost = (pool, host) => host.selfHosted && match(pool.host, {
   onNone: () => true,
   onSome: (name) => name.toLowerCase() === host.hostname.toLowerCase()
 });
+var busyWorkers = (pool, host) => match(pool.workerMatch, {
+  onNone: () => host.workerCommands.length,
+  onSome: (source) => {
+    const pattern = new RegExp(source, "u");
+    return host.workerCommands.filter((command) => pattern.test(command)).length;
+  }
+});
 var judgeLocal = (pool, host) => {
   if (!onPoolHost(pool, host)) {
     return {
@@ -132487,10 +132536,11 @@ var judgeLocal = (pool, host) => {
       note: `${pool.name} skipped, the router job is not on its host`
     };
   }
-  if (host.busyWorkers >= pool.slots) {
+  const busy = busyWorkers(pool, host);
+  if (busy >= pool.slots) {
     return {
       available: false,
-      note: `${pool.name} busy ${host.busyWorkers}/${pool.slots} slots`
+      note: `${pool.name} busy ${busy}/${pool.slots} slots`
     };
   }
   if (host.memAvailableMb < pool.minAvailableMb) {
@@ -132501,7 +132551,7 @@ var judgeLocal = (pool, host) => {
   }
   return {
     available: true,
-    note: `${pool.name} has a free slot (${host.busyWorkers}/${pool.slots} busy, ${host.memAvailableMb} MB available)`
+    note: `${pool.name} has a free slot (${busy}/${pool.slots} busy, ${host.memAvailableMb} MB available)`
   };
 };
 var judgeMetered = (pool, usage, reserveBp) => {

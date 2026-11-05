@@ -205,3 +205,67 @@ describe("ordering and fallback", () => {
     );
   });
 });
+
+const ALKHIDMAH = "/actions-runners/alkhidmah-tech(-[1-3])?/bin/";
+
+const mine = (dir: string) =>
+  `/home/u/actions-runners/${dir}/bin/Runner.Worker spawnclient 3 4`;
+
+describe("worker-match", () => {
+  const routing = routingOf(
+    localPool({ slots: 3, workerMatch: Option.some(ALKHIDMAH) }),
+    hosted
+  );
+
+  it("does not count workers of other runners on the box", () => {
+    const host = hostFacts({
+      workerCommands: [
+        mine("alkhidmah-tech"),
+        mine("alumni-pens"),
+        mine("alumni-pens"),
+        mine("alumni-pens"),
+      ],
+    });
+
+    const decision = decide(routing, host, usageOf(0));
+
+    assert.strictEqual(decision.pool.name, "x1");
+    assert.include(decision.reason, "x1 has a free slot (1/3 busy");
+  });
+
+  it("overflows only when the matching runners fill every slot", () => {
+    const host = hostFacts({
+      workerCommands: [
+        mine("alkhidmah-tech"),
+        mine("alkhidmah-tech-2"),
+        mine("alkhidmah-tech-3"),
+      ],
+    });
+
+    const decision = decide(routing, host, usageOf(0));
+
+    assert.strictEqual(decision.pool.name, "hosted");
+    assert.include(decision.reason, "x1 busy 3/3 slots");
+  });
+
+  it("leaves the router's own runner directory out of the match", () => {
+    const host = hostFacts({
+      workerCommands: [mine("alkhidmah-tech-4"), mine("alkhidmah-tech-4")],
+    });
+
+    assert.include(
+      decide(routing, host, usageOf(0)).reason,
+      "x1 has a free slot (0/3 busy"
+    );
+  });
+
+  it("counts every worker on the box when the pool has no worker-match", () => {
+    const host = hostFacts({
+      workerCommands: [mine("alkhidmah-tech"), mine("alumni-pens")],
+    });
+
+    const open = routingOf(localPool({ slots: 2 }), hosted);
+
+    assert.strictEqual(decide(open, host, usageOf(0)).pool.name, "hosted");
+  });
+});

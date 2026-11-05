@@ -143,4 +143,20 @@ describe("readRouting", () => {
       );
     })
   );
+
+  it.effect("decodes worker-match and rejects one that is not a regex", () =>
+    Effect.gen(function* matches() {
+      const ok = `- {name: a, runs-on: x, kind: local, workers: 1, slots: 1, min-available-mb: 1, worker-match: "runners/a(-1)?/"}`;
+      const bad = `- {name: a, runs-on: x, kind: local, workers: 1, slots: 1, min-available-mb: 1, worker-match: "runners/(a"}`;
+      const empty = `- {name: a, runs-on: x, kind: local, workers: 1, slots: 1, min-available-mb: 1, worker-match: ""}`;
+      const [local] = (yield* readRouting(ok, "0.9", "")).pools;
+
+      assert.deepStrictEqual(
+        local?.kind === "local" ? local.workerMatch : Option.none(),
+        Option.some("runners/a(-1)?/")
+      );
+      assert.include((yield* rejected(bad)).reason, "worker-match");
+      assert.strictEqual((yield* rejected(empty)).input, "pools");
+    })
+  );
 });
